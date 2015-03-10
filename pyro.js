@@ -25,8 +25,6 @@
           rule.to = host.ip;
           rule.from = port.from;
           rule.comment = "" + port.from + " --> " + hostName + ":" + portName;
-          rule._toName = hostName;
-          rule._fromName = port.from;
           return rules.forward.push(rule);
         });
       }
@@ -38,6 +36,12 @@
         compiled.push("-p " + rule.proto);
       } else {
         compiled.push("-p tcp");
+      }
+      if (!rule._toName) {
+        rule._toName = rule.to;
+      }
+      if (!rule._fromName) {
+        rule._fromName = rule.from;
       }
       if (hosts[rule.from]) {
         rule.from = hosts[rule.from].ip;

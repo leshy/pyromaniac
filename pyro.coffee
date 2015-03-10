@@ -7,7 +7,8 @@ ribcage.init {}, (err,env) ->
     rules = env.settings.rules
     if not rules.forward then rules.forward = []
     hosts = env.settings.hosts
-    
+
+        
     _.map hosts, (host,hostName) ->
         if host.ports
             _.map host.ports, (port,portName) ->
@@ -18,9 +19,6 @@ ribcage.init {}, (err,env) ->
 
                 rule.comment = "#{port.from} --> #{hostName}:#{portName}"
 
-                rule._toName = hostName
-                rule._fromName = port.from
-
                 rules.forward.push rule
         
 
@@ -30,6 +28,9 @@ ribcage.init {}, (err,env) ->
         compiled = [ 'iptables -A FORWARD' ]
         
         if rule.proto then compiled.push "-p #{rule.proto}" else compiled.push "-p tcp"
+
+        if not rule._toName then rule._toName = rule.to
+        if not rule._fromName then rule._fromName = rule.from
 
         if hosts[rule.from] then rule.from = hosts[rule.from].ip
         if hosts[rule.to] then rule.to = hosts[rule.to].ip
