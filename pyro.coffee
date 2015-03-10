@@ -5,6 +5,7 @@ _ = require 'underscore'
 
 ribcage.init {}, (err,env) ->
     rules = env.settings.rules
+    if not rules.forward then rules.forward = []
     hosts = env.settings.hosts
     
     _.map hosts, (host,hostName) ->

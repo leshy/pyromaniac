@@ -13,6 +13,9 @@
   ribcage.init({}, function(err, env) {
     var hosts, pings, rules;
     rules = env.settings.rules;
+    if (!rules.forward) {
+      rules.forward = [];
+    }
     hosts = env.settings.hosts;
     _.map(hosts, function(host, hostName) {
       if (host.ports) {
