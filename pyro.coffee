@@ -83,16 +83,13 @@ ribcage.init {}, (err,env) ->
         str
 
 
-
     console.log "\n# NAT\n"
     _.each rules.nat, (rule) ->
         console.log compileNat rule
         console.log compileForward rule
 
-
     console.log "\n# INTERNAL\n"                
     _.each rules.forward, (rule) -> console.log compileForward rule
-
 
     console.log "\n# INTERNAL PINGS\n"
 
