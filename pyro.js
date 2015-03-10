@@ -47,7 +47,7 @@
           rule = _.extend({}, _.pick(port, 'proto', 'port'));
           rule.to = host.ip;
           rule._toName = hostName;
-          rule.from = port.from;
+          rule.from = port.host;
           rule._portName = portName;
           return rules.nat.push(rule);
         });
