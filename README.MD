@@ -64,4 +64,9 @@ iptables -A FORWARD -m iprange --src-range 10.1.1.2-254 -d 10.1.1.11 -p icmp --i
 iptables -A FORWARD -m iprange --src-range 10.1.1.2-254 -d 10.1.1.51 -p icmp --icmp-type echo-request -j ACCEPT 
 
 ```
+
+reads hosts definitions and builds forward rules
+reads forward rules and compiles ICMP forward rules
+reads forward rules and compiles them
+
     
