@@ -36,6 +36,7 @@
           var rule;
           rule = _.extend({}, _.pick(port, 'proto', 'port'));
           rule.to = host.ip;
+          rule._toName = hostName;
           rule.from = port.from;
           rule.comment = "" + port.from + " --> " + hostName + ":" + portName;
           return rules.forward.push(rule);

@@ -24,6 +24,7 @@ ribcage.init {}, (err,env) ->
                 rule = _.extend {}, _.pick port, 'proto', 'port'
                 
                 rule.to = host.ip
+                rule._toName = hostName
                 rule.from = port.from
 
                 rule.comment = "#{port.from} --> #{hostName}:#{portName}"
@@ -39,8 +40,6 @@ ribcage.init {}, (err,env) ->
                 rule._portName = portName
 
                 rules.nat.push rule
-
-
 
 
     compileNat = (rule) -> 
@@ -88,8 +87,9 @@ ribcage.init {}, (err,env) ->
         console.log compileNat rule
         console.log compileForward rule
 
-    console.log "\n# INTERNAL\n"                
-    _.each rules.forward, (rule) -> console.log compileForward rule
+    console.log "\n# INTERNAL\n"
+    _.each rules.forward, (rule) ->
+        console.log compileForward rule
 
     console.log "\n# INTERNAL PINGS\n"
 
