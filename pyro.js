@@ -11,59 +11,86 @@
   _ = require('underscore');
 
   ribcage.init({}, function(err, env) {
-    var pings;
-    _.each(env.settings.rules.forward, function(rule) {
-      var compiled, match;
-      compiled = [];
-      match = {};
+    var hosts, pings, rules;
+    rules = env.settings.rules;
+    hosts = env.settings.hosts;
+    _.map(hosts, function(host, hostName) {
+      if (host.ports) {
+        return _.map(host.ports, function(port, portName) {
+          var rule;
+          rule = _.extend({}, _.pick(port, 'proto', 'port'));
+          rule.to = host.ip;
+          rule.from = port.from;
+          rule.comment = "" + port.from + " --> " + hostName + ":" + portName;
+          rule._toName = hostName;
+          rule._fromName = port.from;
+          return rules.forward.push(rule);
+        });
+      }
+    });
+    _.each(rules.forward, function(rule) {
+      var compiled;
+      compiled = ['iptables -A FORWARD'];
       if (rule.proto) {
         compiled.push("-p " + rule.proto);
       } else {
         compiled.push("-p tcp");
       }
-      if (rule.from.indexOf('-') === -1) {
-        compiled.push("-s " + rule.from);
-      } else {
-        match['iprange'] = true;
-        compiled.push("--src-range " + rule.from);
+      if (hosts[rule.from]) {
+        rule.from = hosts[rule.from].ip;
       }
-      if (rule.port) {
-        if (rule.port.constructor === Number || rule.port.indexOf('-') === -1) {
-          compiled.push("--dport " + rule.port);
-        } else {
-          match['multiport'] = true;
-          compiled.push("--dports " + rule.port);
-        }
+      if (hosts[rule.to]) {
+        rule.to = hosts[rule.to].ip;
       }
-      match['state'] = true;
-      compiled.push("--state NEW,ESTABLISHED,RELATED -j ACCEPT");
-      if (_.keys(match).length) {
-        compiled.unshift('-m ' + _.keys(match).join(' '));
-      }
-      compiled.unshift['iptables -A FORWARD'];
-      return console.log(compiled.join(' '));
-    });
-    pings = [];
-    _.each(env.settings.rules.forward, function(rule) {
-      pings.push({
-        to: rule.from,
-        from: rule.to
-      });
-      return pings.push({
-        from: rule.from,
-        to: rule.to
-      });
-    });
-    return _.each(pings, function(rule) {
-      var compiled, modules;
-      compiled = ['iptables -A FORWARD '];
-      modules = {};
       if (rule.from.indexOf('-') === -1) {
         compiled.push("-s " + rule.from);
       } else {
         compiled.push("-m iprange --src-range " + rule.from);
       }
-      return compiled.push('-p icmp --icmp-type echo-request -m conntrack --ctstate NEW -m limit --limit 10/s -j ACCEPT');
+      if (rule.port) {
+        if (rule.port.constructor === Number || rule.port.indexOf('-') === -1) {
+          compiled.push("--dport " + rule.port);
+        } else {
+          compiled.push("--match multiport --dports " + rule.port);
+        }
+      }
+      compiled.push("-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT");
+      if (rule.comment) {
+        console.log("# " + rule.comment);
+      }
+      return console.log(compiled.join(' '));
+    });
+    pings = [];
+    _.each(env.settings.rules.forward, function(rule) {
+      if (!_.find(pings, function(entry) {
+        return entry.from === rule.from && entry.to === rule.to;
+      })) {
+        return pings.push({
+          from: rule.from,
+          to: rule.to,
+          comment: "" + rule._fromName + " -- ping -> " + rule._toName
+        });
+      }
+    });
+    console.log("\n# ping definitions\n");
+    return _.each(pings, function(rule) {
+      var compiled;
+      compiled = ['iptables -A FORWARD'];
+      if (rule.from.indexOf('-') === -1) {
+        compiled.push("-s " + rule.from);
+      } else {
+        compiled.push("-m iprange --src-range " + rule.from);
+      }
+      if (rule.to.indexOf('-') === -1) {
+        compiled.push("-d " + rule.to);
+      } else {
+        compiled.push("-m iprange --dst-range " + rule.to);
+      }
+      compiled.push('-p icmp --icmp-type echo-request -j ACCEPT');
+      if (rule.comment) {
+        console.log("# " + rule.comment);
+      }
+      return console.log(compiled.join(' '));
     });
   });
 

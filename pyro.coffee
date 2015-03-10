@@ -4,47 +4,66 @@ fs = require 'fs'
 _ = require 'underscore'
 
 ribcage.init {}, (err,env) ->
+    rules = env.settings.rules
+    hosts = env.settings.hosts
+    
+    _.map hosts, (host,hostName) ->
+        if host.ports
+            _.map host.ports, (port,portName) ->
+                rule = _.extend {}, _.pick port, 'proto', 'port'
+                
+                rule.to = host.ip
+                rule.from = port.from
 
-   
-    _.each env.settings.rules.forward, (rule) ->        
-        compiled = [ ]
-        match = {}
+                rule.comment = "#{port.from} --> #{hostName}:#{portName}"
+
+                rule._toName = hostName
+                rule._fromName = port.from
+
+                rules.forward.push rule
+        
+
+        
+    
+    _.each rules.forward, (rule) ->
+        compiled = [ 'iptables -A FORWARD' ]
         
         if rule.proto then compiled.push "-p #{rule.proto}" else compiled.push "-p tcp"
 
+        if hosts[rule.from] then rule.from = hosts[rule.from].ip
+        if hosts[rule.to] then rule.to = hosts[rule.to].ip
+            
         if rule.from.indexOf('-') is -1 then compiled.push "-s #{rule.from}"
-        else
-            match['iprange'] = true
-            compiled.push "--src-range #{rule.from}"
-
+        else compiled.push "-m iprange --src-range #{rule.from}"
 
         if rule.port
             if rule.port.constructor is Number or rule.port.indexOf('-') is -1 then compiled.push "--dport #{rule.port}"
-            else
-                match['multiport'] = true
-                compiled.push "--dports #{rule.port}"
+            else compiled.push "--match multiport --dports #{rule.port}"
 
-        match['state'] = true
-        
-        compiled.push "--state NEW,ESTABLISHED,RELATED -j ACCEPT"
+        compiled.push "-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT"
 
-        if _.keys(match).length then compiled.unshift '-m ' + _.keys(match).join(' ')
-        compiled.unshift['iptables -A FORWARD' ]
+        if rule.comment then console.log "# " + rule.comment
         console.log compiled.join(' ')
         
     pings = []
     _.each env.settings.rules.forward, (rule) ->
-            pings.push { to: rule.from, from: rule.to }
-            pings.push { from: rule.from, to: rule.to }
+        if not _.find(pings, (entry) -> entry.from is rule.from and entry.to is rule.to)
+            pings.push { from: rule.from, to: rule.to, comment: "#{rule._fromName} -- ping -> #{rule._toName}" }
+
+    console.log "\n# ping definitions\n"
 
     _.each pings, (rule) ->
-        compiled = [ 'iptables -A FORWARD ' ]
-        modules = {}
-        
+        compiled = [ 'iptables -A FORWARD' ]
+
         if rule.from.indexOf('-') is -1 then compiled.push "-s #{rule.from}"
         else compiled.push "-m iprange --src-range #{rule.from}"
 
-                
+        if rule.to.indexOf('-') is -1 then compiled.push "-d #{rule.to}"
+        else compiled.push "-m iprange --dst-range #{rule.to}"
         
-        compiled.push '-p icmp --icmp-type echo-request -m conntrack --ctstate NEW -m limit --limit 10/s -j ACCEPT'
+        compiled.push '-p icmp --icmp-type echo-request -j ACCEPT'
+        
+        if rule.comment then console.log "# " + rule.comment        
+        console.log compiled.join(' ')
+
 
