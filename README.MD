@@ -66,7 +66,11 @@ iptables -A FORWARD -m iprange --src-range 10.1.1.2-254 -d 10.1.1.51 -p icmp --i
 ```
 
 reads hosts definitions and builds forward rules
+
+    
 reads forward rules and compiles ICMP forward rules
+
+    
 reads forward rules and compiles them
 
     
