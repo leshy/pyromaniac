@@ -11,9 +11,11 @@
   _ = require('underscore');
 
   ribcage.init({}, function(err, env) {
-    return _.each(env.settings.rules.forward, function(rule) {
-      var compiled;
-      compiled = ['iptables -A FORWARD'];
+    var pings;
+    _.each(env.settings.rules.forward, function(rule) {
+      var compiled, match;
+      compiled = [];
+      match = {};
       if (rule.proto) {
         compiled.push("-p " + rule.proto);
       } else {
@@ -22,18 +24,46 @@
       if (rule.from.indexOf('-') === -1) {
         compiled.push("-s " + rule.from);
       } else {
+        match['iprange'] = true;
+        compiled.push("--src-range " + rule.from);
+      }
+      if (rule.port) {
+        if (rule.port.constructor === Number || rule.port.indexOf('-') === -1) {
+          compiled.push("--dport " + rule.port);
+        } else {
+          match['multiport'] = true;
+          compiled.push("--dports " + rule.port);
+        }
+      }
+      match['state'] = true;
+      compiled.push("--state NEW,ESTABLISHED,RELATED -j ACCEPT");
+      if (_.keys(match).length) {
+        compiled.unshift('-m ' + _.keys(match).join(' '));
+      }
+      compiled.unshift['iptables -A FORWARD'];
+      return console.log(compiled.join(' '));
+    });
+    pings = [];
+    _.each(env.settings.rules.forward, function(rule) {
+      pings.push({
+        to: rule.from,
+        from: rule.to
+      });
+      return pings.push({
+        from: rule.from,
+        to: rule.to
+      });
+    });
+    return _.each(pings, function(rule) {
+      var compiled, modules;
+      compiled = ['iptables -A FORWARD '];
+      modules = {};
+      if (rule.from.indexOf('-') === -1) {
+        compiled.push("-s " + rule.from);
+      } else {
         compiled.push("-m iprange --src-range " + rule.from);
       }
-      if (!rule.port) {
-        throw "no port " + rule;
-      }
-      if (rule.port.constructor === Number || rule.port.indexOf('-') === -1) {
-        compiled.push("--dport " + rule.port);
-      } else {
-        compiled.push("--match multiport --dports " + rule.port);
-      }
-      compiled.push("-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT");
-      return console.log(compiled.join(' '));
+      return compiled.push('-p icmp --icmp-type echo-request -m conntrack --ctstate NEW -m limit --limit 10/s -j ACCEPT');
     });
   });
 
