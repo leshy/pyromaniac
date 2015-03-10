@@ -11,15 +11,28 @@
   _ = require('underscore');
 
   ribcage.init({}, function(err, env) {
-    var hosts, pings, rules;
+    var compileForward, compileNat, hosts, pings, resolveHosts, rules;
     rules = env.settings.rules;
     if (!rules.forward) {
       rules.forward = [];
     }
+    if (!rules.nat) {
+      rules.nat = [];
+    }
     hosts = env.settings.hosts;
+    resolveHosts = function(rule) {
+      if (hosts[rule.from]) {
+        rule._fromName = rule.from;
+        rule.from = hosts[rule.from].ip;
+      }
+      if (hosts[rule.to]) {
+        rule._toName = rule.to;
+        return rule.to = hosts[rule.to].ip;
+      }
+    };
     _.map(hosts, function(host, hostName) {
       if (host.ports) {
-        return _.map(host.ports, function(port, portName) {
+        _.map(host.ports, function(port, portName) {
           var rule;
           rule = _.extend({}, _.pick(port, 'proto', 'port'));
           rule.to = host.ip;
@@ -28,31 +41,63 @@
           return rules.forward.push(rule);
         });
       }
+      if (host.publicPorts) {
+        return _.map(host.publicPorts, function(port, portName) {
+          var rule;
+          rule = _.extend({}, _.pick(port, 'proto', 'port'));
+          rule.to = host.ip;
+          rule._toName = hostName;
+          rule.from = port.from;
+          rule._portName = portName;
+          return rules.nat.push(rule);
+        });
+      }
     });
-    _.each(rules.forward, function(rule) {
-      var compiled;
+    compileNat = function(rule) {
+      var compiled, str;
+      rule = _.extend({}, {
+        publicPort: rule.port,
+        proto: 'tcp'
+      }, rule);
+      resolveHosts(rule);
+      compiled = ["iptables -t nat -A PREROUTING -p " + rule.proto + " -i eth0 --dport " + rule.publicPort];
+      if (rule.from) {
+        compiled.push("-d " + rule.from);
+      }
+      if (rule.from) {
+        rule.comment = "" + rule.from + ":" + rule.publicPort + " --> " + rule._toName + ":" + rule.port;
+      } else {
+        rule.comment = "" + rule.publicPort + " --> " + rule._toName + ":" + rule.port;
+      }
+      compiled.push(["-j DNAT --to-destination " + rule.to + ":" + rule.port]);
+      str = compiled.join(' ');
+      if (rule.comment) {
+        str = "# " + rule.comment + "\n" + str;
+      }
+      return str;
+    };
+    compileForward = function(rule) {
+      var compiled, str;
       compiled = ['iptables -A FORWARD'];
       if (rule.proto) {
         compiled.push("-p " + rule.proto);
       } else {
         compiled.push("-p tcp");
       }
-      if (!rule._toName) {
-        rule._toName = rule.to;
+      resolveHosts(rule);
+      if (rule.to) {
+        if (rule.to.indexOf('-') === -1) {
+          compiled.push("-d " + rule.to);
+        } else {
+          compiled.push("-m iprange --dst-range " + rule.to);
+        }
       }
-      if (!rule._fromName) {
-        rule._fromName = rule.from;
-      }
-      if (hosts[rule.from]) {
-        rule.from = hosts[rule.from].ip;
-      }
-      if (hosts[rule.to]) {
-        rule.to = hosts[rule.to].ip;
-      }
-      if (rule.from.indexOf('-') === -1) {
-        compiled.push("-s " + rule.from);
-      } else {
-        compiled.push("-m iprange --src-range " + rule.from);
+      if (rule.from) {
+        if (rule.from.indexOf('-') === -1) {
+          compiled.push("-s " + rule.from);
+        } else {
+          compiled.push("-m iprange --src-range " + rule.from);
+        }
       }
       if (rule.port) {
         if (rule.port.constructor === Number || rule.port.indexOf('-') === -1) {
@@ -62,13 +107,27 @@
         }
       }
       compiled.push("-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT");
+      str = compiled.join(' ');
       if (rule.comment) {
-        console.log("# " + rule.comment);
+        str = "# " + rule.comment + "\n" + str;
       }
-      return console.log(compiled.join(' '));
+      return str;
+    };
+    console.log("\n# NAT\n");
+    _.each(rules.nat, function(rule) {
+      console.log(compileNat(rule));
+      return console.log(compileForward(rule));
     });
+    console.log("\n# INTERNAL\n");
+    _.each(rules.forward, function(rule) {
+      return console.log(compileForward(rule));
+    });
+    console.log("\n# INTERNAL PINGS\n");
     pings = [];
-    _.each(env.settings.rules.forward, function(rule) {
+    _.each(rules.forward, function(rule) {
+      if (!rule.from) {
+        return;
+      }
       if (!_.find(pings, function(entry) {
         return entry.from === rule.from && entry.to === rule.to;
       })) {
@@ -79,10 +138,10 @@
         });
       }
     });
-    console.log("\n# ping definitions\n");
     return _.each(pings, function(rule) {
       var compiled;
       compiled = ['iptables -A FORWARD'];
+      resolveHosts(rule);
       if (rule.from.indexOf('-') === -1) {
         compiled.push("-s " + rule.from);
       } else {
