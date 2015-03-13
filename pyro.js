@@ -45,7 +45,7 @@
       if (host.publicPorts) {
         return _.map(host.publicPorts, function(port, portName) {
           var rule;
-          rule = _.extend({}, _.pick(port, 'proto', 'port'));
+          rule = _.extend({}, _.pick(port, 'proto', 'port', 'publicPort'));
           rule.to = host.ip;
           rule._toName = hostName;
           rule.from = port.host;
@@ -114,12 +114,12 @@
       }
       return str;
     };
-    console.log("\n# NAT\n");
+    console.log("# NAT\n");
     _.each(rules.nat, function(rule) {
       console.log(compileNat(rule));
       return console.log(compileForward(rule));
     });
-    console.log("\n# INTERNAL\n");
+    console.log("\n# INTERNAL CONNECTIONS\n");
     _.each(rules.forward, function(rule) {
       return console.log(compileForward(rule));
     });

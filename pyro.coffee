@@ -33,7 +33,7 @@ ribcage.init {}, (err,env) ->
                 
         if host.publicPorts
             _.map host.publicPorts, (port,portName) ->
-                rule = _.extend {}, _.pick port, 'proto', 'port'
+                rule = _.extend {}, _.pick port, 'proto', 'port', 'publicPort'
                 rule.to = host.ip
                 rule._toName = hostName
                 rule.from = port.host
@@ -42,9 +42,10 @@ ribcage.init {}, (err,env) ->
                 rules.nat.push rule
 
 
-    compileNat = (rule) -> 
+    compileNat = (rule) ->
         rule = _.extend {}, { publicPort: rule.port, proto: 'tcp' }, rule
         resolveHosts(rule)
+
         compiled = [ "iptables -t nat -A PREROUTING -p #{rule.proto} -i eth0 --dport #{rule.publicPort}" ]
 
         if rule.from then compiled.push "-d #{rule.from}"
@@ -82,12 +83,12 @@ ribcage.init {}, (err,env) ->
         str
 
 
-    console.log "\n# NAT\n"
+    console.log "# NAT\n"
     _.each rules.nat, (rule) ->
         console.log compileNat rule
         console.log compileForward rule
 
-    console.log "\n# INTERNAL\n"
+    console.log "\n# INTERNAL CONNECTIONS\n"
     _.each rules.forward, (rule) ->
         console.log compileForward rule
 
