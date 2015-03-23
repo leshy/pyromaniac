@@ -46,12 +46,12 @@ ribcage.init {}, (err,env) ->
         rule = _.extend {}, { publicPort: rule.port, proto: 'tcp' }, rule
         resolveHosts(rule)
 
-        compiled = [ "iptables -t nat -A PREROUTING -p #{rule.proto} -i eth0 --dport #{rule.publicPort}" ]
+        compiled = [ "iptables -A PREROUTING -t nat -p #{rule.proto} -i eth0 --dport #{rule.publicPort}" ]
 
         if rule.from then compiled.push "-d #{rule.from}"
         if rule.from then rule.comment = "#{rule.from}:#{rule.publicPort} --> #{rule._toName}:#{rule.port}"
         else rule.comment = "#{rule.publicPort} --> #{rule._toName}:#{rule.port}"
-        compiled.push [ "-j DNAT --to-destination #{rule.to}:#{rule.port}" ]
+        compiled.push [ "-j DNAT --to #{rule.to}:#{rule.port}" ]
         
         str = compiled.join (' ')
         if rule.comment then str = "# " + rule.comment + "\n" + str
@@ -86,6 +86,7 @@ ribcage.init {}, (err,env) ->
     console.log "# NAT\n"
     _.each rules.nat, (rule) ->
         console.log compileNat rule
+        delete rule.from
         console.log compileForward rule
 
     console.log "\n# INTERNAL CONNECTIONS\n"
