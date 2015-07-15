@@ -3,26 +3,33 @@ util = require 'util'
 fs = require 'fs'
 _ = require 'underscore'
 
-ribcage.init {}, (err,env) ->
+ribcage.init { verboseInit: false }, (err,env) ->
     rules = env.settings.rules
     if not rules.forward then rules.forward = []
     if not rules.nat then rules.nat = []
     hosts = env.settings.hosts
 
-    resolveHosts = (rule) ->
-        if hosts[rule.from]
-            rule._fromName = rule.from
-            rule.from = hosts[rule.from].ip
-        if hosts[rule.to]
-            rule._toName = rule.to
-            rule.to = hosts[rule.to].ip
+    resolveHost = (host) ->
+      if resolvedHost = hosts[host]?.ip then return resolvedHost else return host
 
-        
+    resolveHostArray = (host) ->
+      if host.constructor is Array
+        return _.map(host, resolveHost).join(',')
+      else resolveHost(host)
+
+    resolveHosts = (rule) ->
+        if rule.from
+            rule._fromName = rule.from
+            rule.from = resolveHostArray rule.from
+        if rule.to
+            rule._toName = rule.to
+            rule.to = resolveHostArray rule.to
+
     _.map hosts, (host,hostName) ->
         if host.ports
             _.map host.ports, (port,portName) ->
                 rule = _.extend {}, _.pick port, 'proto', 'port'
-                
+
                 rule.to = host.ip
                 rule._toName = hostName
                 rule.from = port.from
@@ -30,10 +37,10 @@ ribcage.init {}, (err,env) ->
                 rule.comment = "#{port.from} --> #{hostName}:#{portName}"
 
                 rules.forward.push rule
-                
+
         if host.publicPorts
             _.map host.publicPorts, (port,portName) ->
-                rule = _.extend {}, _.pick port, 'proto', 'port', 'publicPort'
+                rule = _.extend {}, _.pick port, 'proto', 'port', 'internalPort'
                 rule.to = host.ip
                 rule._toName = hostName
                 rule.from = port.host
@@ -43,27 +50,32 @@ ribcage.init {}, (err,env) ->
 
 
     compileNat = (rule) ->
-        rule = _.extend {}, { publicPort: rule.port, proto: 'tcp' }, rule
+        rule = _.extend {}, { proto: 'tcp' }, rule
         resolveHosts(rule)
 
-        compiled = [ "iptables -A PREROUTING -t nat -p #{rule.proto} -i eth0 --dport #{rule.publicPort}" ]
+        compiled = [ "iptables -A PREROUTING -t nat -p #{rule.proto} -i eth0" ]
+
+        if rule.port.constructor is Number then compiled.push "--dport #{rule.port}"
+        else compiled.push "--match multiport --dports #{rule.port}"
 
         if rule.from then compiled.push "-d #{rule.from}"
-        if rule.from then rule.comment = "#{rule.from}:#{rule.publicPort} --> #{rule._toName}:#{rule.port}"
-        else rule.comment = "#{rule.publicPort} --> #{rule._toName}:#{rule.port}"
-        compiled.push [ "-j DNAT --to #{rule.to}:#{rule.port}" ]
-        
+        if rule.from then rule.comment = "#{rule.from}:#{rule.port} --> #{rule._toName}:#{rule.internalPort or rule.port}"
+        else rule.comment = "#{rule.port} --> #{rule._toName}:#{rule.internalPort or rule.port}"
+
+        if not rule.internalPort then compiled.push "-j DNAT --to #{rule.to}"
+        else compiled.push "-j DNAT --to #{rule.to}:#{rule.internalPort}"
+
         str = compiled.join (' ')
         if rule.comment then str = "# " + rule.comment + "\n" + str
         str
-        
-    compileForward = (rule) ->     
+
+    compileForward = (rule) ->
         compiled = [ 'iptables -A FORWARD' ]
-        
+
         if rule.proto then compiled.push "-p #{rule.proto}" else compiled.push "-p tcp"
 
         resolveHosts(rule)
-        
+
         if rule.to
             if rule.to.indexOf('-') is -1 then compiled.push "-d #{rule.to}"
             else compiled.push "-m iprange --dst-range #{rule.to}"
@@ -71,9 +83,9 @@ ribcage.init {}, (err,env) ->
         if rule.from
             if rule.from.indexOf('-') is -1 then compiled.push "-s #{rule.from}"
             else compiled.push "-m iprange --src-range #{rule.from}"
-        
+
         if rule.port
-            if rule.port.constructor is Number or rule.port.indexOf('-') is -1 then compiled.push "--dport #{rule.port}"
+            if rule.port.constructor is Number or rule.port.indexOf(':') is -1 then compiled.push "--dport #{rule.port}"
             else compiled.push "--match multiport --dports #{rule.port}"
 
         compiled.push "-m state --state NEW,ESTABLISHED,RELATED -j ACCEPT"
@@ -87,6 +99,7 @@ ribcage.init {}, (err,env) ->
     _.each rules.nat, (rule) ->
         console.log compileNat rule
         delete rule.from
+        if rule.internalPort then rule.port = rule.internalPort
         console.log compileForward rule
 
     console.log "\n# INTERNAL CONNECTIONS\n"
@@ -111,10 +124,8 @@ ribcage.init {}, (err,env) ->
 
         if rule.to.indexOf('-') is -1 then compiled.push "-d #{rule.to}"
         else compiled.push "-m iprange --dst-range #{rule.to}"
-        
+
         compiled.push '-p icmp --icmp-type echo-request -j ACCEPT'
-        
-        if rule.comment then console.log "# " + rule.comment        
+
+        if rule.comment then console.log "# " + rule.comment
         console.log compiled.join(' ')
-
-
